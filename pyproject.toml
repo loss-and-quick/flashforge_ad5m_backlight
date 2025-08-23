@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ff-ad5m-backlight"
-version = "v0.1"
+version = "v0.2"
 dependencies = []
 requires-python = ">= 3.8"
 authors = [ {name = "Tristan Timmermans", email = "none@yourbusiness.nowhere"} ]
