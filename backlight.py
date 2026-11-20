@@ -1,13 +1,34 @@
-from fcntl import ioctl
-from struct import pack
 import argparse
+from fcntl import ioctl
+from pathlib import Path
+from struct import pack
 
 DISP_LCD_SET_BRIGHTNESS = 0x102
 DISP_LCD_GET_BRIGHTNESS = 0x103
 DISP_LCD_BACKLIGHT_ENABLE = 0x104
 DISP_LCD_BACKLIGHT_DISABLE = 0x105
+SYSFS_BACKLIGHT_CLASS = Path("/sys/class/backlight")
 
-def backlight_enable(enable=True):
+
+def _get_sysfs_backlight_node():
+    if not SYSFS_BACKLIGHT_CLASS.exists():
+        return None
+
+    for node in sorted(SYSFS_BACKLIGHT_CLASS.iterdir()):
+        if node.is_dir():
+            return node
+
+    return None
+
+
+def backlight_enable(enable: bool = True) -> None:
+    sysfs_node = _get_sysfs_backlight_node()
+    if sysfs_node is not None:
+        bl_power = sysfs_node / "bl_power"
+        if bl_power.exists():
+            _ = bl_power.write_text("0\n" if enable else "4\n")
+        return
+
     if enable:
         ctl = DISP_LCD_BACKLIGHT_ENABLE
     else:
@@ -15,13 +36,30 @@ def backlight_enable(enable=True):
     with open("/dev/disp", "wb") as f:
         ioctl(f, ctl, b"")
 
-def backlight_get():
+
+def backlight_get() -> int:
+    sysfs_node = _get_sysfs_backlight_node()
+    if sysfs_node is not None:
+        brightness = int((sysfs_node / "brightness").read_text().strip())
+        max_brightness = int((sysfs_node / "max_brightness").read_text().strip())
+        if max_brightness <= 0:
+            return 0
+        return min(255, max(0, round(brightness * 255 / max_brightness)))
+
     with open("/dev/disp", "wb") as f:
         buffer = bytearray(4)
         value = ioctl(f, DISP_LCD_GET_BRIGHTNESS, buffer)
     return value
 
-def backlight_set(value):
+
+def backlight_set(value: int) -> None:
+    sysfs_node = _get_sysfs_backlight_node()
+    if sysfs_node is not None:
+        max_brightness = int((sysfs_node / "max_brightness").read_text().strip())
+        scaled_value = 0 if max_brightness <= 0 else round(int(value) * max_brightness / 255)
+        _ = (sysfs_node / "brightness").write_text(f"{scaled_value}\n")
+        return
+
     with open("/dev/disp", "wb") as f:
         ioctl(f, DISP_LCD_SET_BRIGHTNESS, pack("=L", 0) + pack("=L", int(value)))
 
